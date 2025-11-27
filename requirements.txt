@@ -1,0 +1,19 @@
+# 核心依赖（Excel文档处理）
+openpyxl>=3.1.0
+python-docx>=0.8.11
+
+# PDF文档处理
+pdfplumber>=0.9.0
+
+# 图片提取和PDF转图片
+pdf2image>=1.16.0
+
+# 多模态LLM支持
+openai>=1.0.0
+
+# 图像处理
+Pillow>=10.0.0
+
+# 可选依赖（根据需要安装）
+# pytesseract>=0.3.10  # OCR功能（如需要）
+# poppler-utils        # 用于pdf2image（需要单独安装）
