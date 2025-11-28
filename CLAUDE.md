@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **single-file Python utility** that processes Excel files containing hyperlinks to external documents. It extracts content from linked files (.pdf, .docx, .txt, .xlsx), analyzes images using multimodal LLM (qwen-vl), and inserts content back into the Excel file as markdown-formatted text in a new column.
+This is a **single-file Python utility** that processes Excel files containing hyperlinks to external documents. It extracts content from linked files (.pdf, .docx, .txt, .xlsx, .pptx, .xmind), analyzes images using multimodal LLM (qwen-vl), and inserts content back into the Excel file as markdown-formatted text in a new column.
 
 ## Code Structure
 
@@ -19,16 +19,22 @@ This is a **single-file Python utility** that processes Excel files containing h
 - `read_txt_content()` - Plain text files
 - `read_docx_content()` - Microsoft Word documents
 - `read_xlsx_content()` - Excel files (all sheets)
+- `read_pptx_content()` - PowerPoint presentations
+- `read_xmind_content()` - XMind mind maps
 - `read_pdf_content()` - PDF files with text extraction
 
 **3. Image Extraction (lines 331-430)**
 - `extract_images_from_docx()` - Extract embedded images from DOCX via zipfile
 - `extract_images_from_pdf()` - Convert PDF pages to images
+- `extract_images_from_pptx()` - Extract embedded images from PPTX
+- `extract_images_from_xmind()` - Extract images from XMind
 - `extract_images_from_document()` - Unified interface
 
 **4. Document Conversion (lines 431-530)**
 - `convert_docx_to_markdown_with_placeholders()` - XML parsing + fallback strategy
 - `convert_pdf_to_markdown_with_placeholders()` - Smart page detection
+- `convert_pptx_to_markdown_with_placeholders()` - Slide-based conversion
+- `convert_xmind_to_markdown_with_placeholders()` - Mind map conversion
 - `convert_to_markdown_with_placeholders()` - Dispatcher
 
 **5. Multimodal LLM (lines 531-630)**
@@ -57,19 +63,26 @@ FILE_READERS = {
     '.txt': read_txt_content,
     '.docx': read_docx_content,
     '.xlsx': read_xlsx_content,
+    '.pptx': read_pptx_content,
     '.pdf': read_pdf_content,
+    '.xmind': read_xmind_content,
 }
 ```
 
 ### 2. Image Position Detection
 **DOCX Strategy**:
-1. Primary: Parse internal XML (word/document.xml) to find image positions
-2. Fallback: Distribute images evenly by paragraph interval
+- Parse internal XML (word/document.xml) to find image positions
 
 **PDF Strategy**:
-1. Primary: Detect images using pdfplumber.page.images
-2. Secondary: Heuristic detection via keywords (图, image, 图表)
-3. Tertiary: Proportional distribution based on page count
+- Detect images using pdfplumber.page.images
+
+**PPTX Strategy**:
+- Detect image shapes (shape_type == 13) per slide
+
+**XMind Strategy**:
+- Parse with xmindparser to get structured data
+- Check markers for image indicators
+- Uses ZIP file extraction for embedded images
 
 ### 3. Multimodal Analysis
 - **Sequential Processing**: Each image gets its own LLM call for 100% accuracy
@@ -170,6 +183,8 @@ More content...
 ### Core (from requirements.txt)
 - `openpyxl>=3.1.0` - Excel manipulation
 - `python-docx>=0.8.11` - Word documents
+- `python-pptx>=0.6.21` - PowerPoint presentations
+- `xmindparser>=1.0.9` - XMind mind maps
 - `pdfplumber>=0.9.0` - PDF text extraction
 - `pdf2image>=1.16.0` - PDF to image conversion
 - `openai>=1.0.0` - LLM API client
@@ -198,6 +213,37 @@ More content...
 ### 4. Incorrect Image Positions (FIXED)
 - **Issue**: Placeholders not at correct locations
 - **Fix**: XML parsing + intelligent fallback strategies
+
+### 5. XMind Format Support (ENHANCED)
+- **Previous**: Raw ZIP/XML parsing with limited compatibility
+- **Current**: Using `xmindparser` library for robust parsing
+- **Benefits**:
+  - Supports both legacy and XMind Zen formats
+  - Better handling of hierarchical structure
+  - Extracts metadata (notes, labels, links, markers)
+  - More reliable image detection and positioning
+
+### 6. Removed Fallback Mechanisms (SIMPLIFIED) ✓
+- **Change**: Removed all fallback strategies for image position detection
+- **Reasoning**: Streamlined code for better maintainability and clearer logic
+- **Impact**:
+  - DOCX: Uses only XML-based position detection
+  - PDF: Uses only pdfplumber.image detection
+  - PPTX: Uses only shape-type detection
+  - XMind: Uses only marker-based detection
+- **Result**: Simpler, more maintainable codebase
+
+### 7. Simplified Code Structure (OPTIMIZED) ✓
+- **Change**: Consolidated functions for better readability and maintainability
+- **Rationale**:
+  - Direct implementation is more intuitive than abstraction
+  - Fewer functions mean less cognitive overhead
+  - Easier to debug and understand
+- **Implementation**:
+  - All `read_*` functions contain full implementation logic
+  - No unnecessary private helper functions
+  - Clear error handling at the appropriate level
+- **Result**: Cleaner, more straightforward codebase
 
 ## Processing Flow
 
@@ -300,7 +346,9 @@ FILE_READERS = {
     '.txt': read_txt_content,
     '.docx': read_docx_content,
     '.xlsx': read_xlsx_content,
+    '.pptx': read_pptx_content,
     '.pdf': read_pdf_content,
+    '.xmind': read_xmind_content,
     '.csv': read_csv_content,  # New format
 }
 ```
