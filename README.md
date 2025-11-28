@@ -58,11 +58,11 @@ pip install -r requirements.txt
 - `openpyxl` - Excel文件处理
 - `python-docx` - Word文档处理
 - `python-pptx` - PowerPoint演示文稿处理
-- `xmindparser` - XMind思维导图解析
 - `pdfplumber` - PDF文本提取
 - `pdf2image` - PDF图片提取
 - `openai` - 多模态LLM调用
 - `Pillow` - 图片处理
+- `poppler-utils` - PDF图片提取工具（必需）
 
 ### 3️⃣ 安装Poppler（PDF图片支持）
 
@@ -335,7 +335,7 @@ write_file_excel.py
 | Word文档 | .docx | ✅ | ✅ | ✅ | XML解析定位 |
 | Excel工作表 | .xlsx | ✅ | ❌ | ❌ | 所有工作表 |
 | PowerPoint | .pptx | ✅ | ✅ | ✅ | 幻灯片结构 |
-| XMind思维导图 | .xmind | ✅ | ❌ | ❌ | xmindparser库 |
+| XMind思维导图 | .xmind | ✅ | ✅ | ✅ | 直接ZIP解析 |
 | PDF文档 | .pdf | ✅ | ✅ | ✅ | 页面级检测 |
 
 ---
@@ -378,13 +378,12 @@ write_file_excel.py
 **现象**：PPTX文件无法解析
 **解决**：`pip install python-pptx`
 
-#### 8. xmindparser未安装
-**现象**：XMind文件无法解析
-**解决**：`pip install xmindparser`
-
-#### 9. XMind版本兼容性问题
-**现象**：某些XMind文件解析失败
-**解决**：确保使用的是XMind Legacy或XMind Zen格式，程序使用专业的xmindparser库解析
+#### 8. XMind文件无法解析
+**现象**：XMind文件解析失败
+**解决**：
+1. 确保使用的是XMind Legacy或XMind Zen格式
+2. 检查文件是否损坏
+3. 程序使用直接ZIP解析，无需额外依赖
 
 ### 调试模式
 

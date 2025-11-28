@@ -18,12 +18,13 @@ from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 from openpyxl.utils import get_column_letter
 from openai import OpenAI
+
 # from xbot import print
 
 # 抑制所有库的警告
-for mod in ['pdfplumber', 'pdf2image', 'PIL']:
+for mod in ["pdfplumber", "pdf2image", "PIL"]:
     try:
-        warnings.filterwarnings('ignore', module=mod)
+        warnings.filterwarnings("ignore", module=mod)
     except:
         pass
 
@@ -35,9 +36,11 @@ QWEN_VL_CONFIG = {
     "model": "qwen-vl-plus",  # 或 qwen-vl-max
 }
 
+
 # 临时文件管理类
 class TempFileManager:
     """管理临时文件和目录的生命周期"""
+
     def __init__(self):
         self.temp_dir = None
         self.used_paths = set()
@@ -57,28 +60,32 @@ class TempFileManager:
         self.used_paths.add(filename)
         return os.path.join(self.temp_dir, filename)
 
+
 # --- 模块化的内容读取区域 ---
 # TODO: 这里可以添加更多的文件类型支持
 # 未来若要添加对新文件类型（例如 .csv）的支持:
 # 1. 编写一个新的函数 `read_csv_content(file_path)`。
 # 2. 在 FILE_READERS 字典中增加一行映射：`'.csv': read_csv_content`。
 
+
 def read_txt_content(file_path: str) -> str:
     """从 .txt 文件中读取内容。"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         return f"读取 TXT 文件 '{file_path}' 时出错: {e}"
+
 
 def read_docx_content(file_path: str) -> str:
     """从 .docx 文件中读取内容。"""
     try:
         doc = docx.Document(file_path)
         full_text = [para.text for para in doc.paragraphs]
-        return '\n'.join(full_text)
+        return "\n".join(full_text)
     except Exception as e:
         return f"读取 DOCX 文件 '{file_path}' 时出错: {e}"
+
 
 def read_xlsx_content(file_path: str) -> str:
     """
@@ -154,71 +161,92 @@ def read_pptx_content(file_path: str) -> str:
 def read_xmind_content(file_path: str) -> str:
     """
     从 .xmind 文件中读取文本内容。
-    使用xmindparser库将XMind文件转换为Python字典，然后提取文本内容。
+    直接解析 content.json 和 manifest.json，实现节点与图片的精确映射。
     """
     try:
-        from xmindparser import xmind_to_dict
-
-        # 使用xmindparser解析XMind文件
-        xmind_data = xmind_to_dict(file_path)
-
-        # 递归提取所有主题的文本内容
-        all_text = []
+        import zipfile
+        import json
+        import os
+        import re
 
         def extract_text_recursive(topic_data, level=0):
-            """递归提取主题文本"""
+            all_text = []
             if isinstance(topic_data, dict):
-                # 提取当前主题的标题
-                if 'title' in topic_data:
+                if "title" in topic_data:
                     indent = "  " * level
-                    title = topic_data['title']
+                    title = topic_data["title"]
                     if title and title.strip():
                         all_text.append(f"{indent}- {title.strip()}")
 
-                # 处理注释
-                if 'note' in topic_data and topic_data['note']:
+                        if "image" in topic_data and isinstance(
+                            topic_data["image"], dict
+                        ):
+                            image_src = topic_data["image"].get("src", "")
+                            if image_src and "resources/" in image_src:
+                                file_path = image_src.replace("xap:resources/", "")
+                                match = re.search(r"\.([a-zA-Z0-9]+)$", file_path)
+                                if match:
+                                    extension = match.group(1)
+                                    hash_name = file_path[: -len(extension) - 1]
+                                    resource_id = f"{hash_name}.{extension}"
+                                    placeholder = (
+                                        f"[[IMAGE_PLACEHOLDER_{hash_name[:16]}]]"
+                                    )
+                                    all_text.append(f"{indent}  {placeholder}")
+
+                if "note" in topic_data and topic_data["note"]:
                     indent = "  " * level
-                    note = topic_data['note']
+                    note = topic_data["note"]
                     if note.strip():
                         all_text.append(f"{indent}  注释: {note.strip()}")
 
-                # 处理标签
-                if 'labels' in topic_data and topic_data['labels']:
+                if "labels" in topic_data and topic_data["labels"]:
                     indent = "  " * level
-                    labels = topic_data['labels']
+                    labels = topic_data["labels"]
                     if labels:
                         all_text.append(f"{indent}  标签: {', '.join(labels)}")
 
-                # 处理链接
-                if 'link' in topic_data and topic_data['link']:
+                if "link" in topic_data and topic_data["link"]:
                     indent = "  " * level
-                    link = topic_data['link']
+                    link = topic_data["link"]
                     if link.strip():
                         all_text.append(f"{indent}  链接: {link.strip()}")
 
-                # 递归处理子主题
-                if 'topics' in topic_data and topic_data['topics']:
-                    for sub_topic in topic_data['topics']:
-                        extract_text_recursive(sub_topic, level + 1)
+                if "children" in topic_data and isinstance(
+                    topic_data["children"], dict
+                ):
+                    if "attached" in topic_data["children"]:
+                        for sub_topic in topic_data["children"]["attached"]:
+                            sub_text = extract_text_recursive(sub_topic, level + 1)
+                            all_text.extend(sub_text)
 
-        # 遍历所有工作表
-        if isinstance(xmind_data, list):
-            for sheet in xmind_data:
-                if 'topic' in sheet:
-                    # 添加工作表标题
-                    if 'title' in sheet:
-                        all_text.append(f"\n=== {sheet['title']} ===\n")
+            return all_text
+
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
+            content_json = zip_ref.read("content.json").decode("utf-8")
+            content_data = json.loads(content_json)
+
+            try:
+                manifest_json = zip_ref.read("manifest.json").decode("utf-8")
+                manifest_data = json.loads(manifest_json)
+            except:
+                manifest_data = {}
+
+            all_text = []
+
+            if isinstance(content_data, list):
+                for sheet in content_data:
+                    if "title" in sheet and sheet["title"]:
+                        all_text.append(f"# {sheet['title']} #\n")
                     else:
                         all_text.append(f"\n=== 工作表 ===\n")
 
-                    extract_text_recursive(sheet['topic'])
-        elif isinstance(xmind_data, dict) and 'topic' in xmind_data:
-            extract_text_recursive(xmind_data['topic'])
+                    if "rootTopic" in sheet:
+                        topic_text = extract_text_recursive(sheet["rootTopic"])
+                        all_text.extend(topic_text)
 
-        return "\n".join(all_text) if all_text else "无法解析XMind文件内容"
+            return "\n".join(all_text) if all_text else "无法解析XMind文件内容"
 
-    except ImportError:
-        return "错误：需要安装 xmindparser 库来读取XMind文件: pip install xmindparser"
     except FileNotFoundError:
         return f"错误：XMind 文件未找到 '{file_path}'"
     except Exception as e:
@@ -253,7 +281,9 @@ def read_pdf_content(file_path: str) -> str:
 
 
 # --- 图片提取功能 ---
-def extract_images_from_docx(docx_path: str, temp_manager: TempFileManager) -> List[str]:
+def extract_images_from_docx(
+    docx_path: str, temp_manager: TempFileManager
+) -> List[str]:
     """
     从 DOCX 文件中提取所有嵌入的图片。
     返回提取的图片路径列表。
@@ -266,13 +296,16 @@ def extract_images_from_docx(docx_path: str, temp_manager: TempFileManager) -> L
         docx_dir = tempfile.mkdtemp(prefix="docx_extract_")
 
         # DOCX 实际上是一个ZIP文件
-        with zipfile.ZipFile(docx_path, 'r') as zip_ref:
+        with zipfile.ZipFile(docx_path, "r") as zip_ref:
             zip_ref.extractall(docx_dir)
             media_dir = os.path.join(docx_dir, "word", "media")
 
             if os.path.exists(media_dir):
                 for filename in os.listdir(media_dir):
-                    if any(filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
+                    if any(
+                        filename.lower().endswith(ext)
+                        for ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp"]
+                    ):
                         src_path = os.path.join(media_dir, filename)
                         # 复制到临时目录
                         temp_path = temp_manager.get_temp_path(suffix=f"_{filename}")
@@ -302,21 +335,25 @@ def extract_images_from_pdf(pdf_path: str, temp_manager: TempFileManager) -> Lis
 
         for idx, img in enumerate(images):
             temp_path = temp_manager.get_temp_path(suffix=f"_page_{idx+1}.png")
-            img.save(temp_path, 'PNG')
+            img.save(temp_path, "PNG")
             image_paths.append(temp_path)
 
         return image_paths
 
     except ImportError:
         print("警告：需要安装 pdf2image 来处理PDF图片: pip install pdf2image")
-        print("     还需要安装 Poppler: https://pdf2image.readthedocs.io/en/latest/installation.html")
+        print(
+            "     还需要安装 Poppler: https://pdf2image.readthedocs.io/en/latest/installation.html"
+        )
         return []
     except Exception as e:
         print(f"从PDF提取图片时出错: {e}")
         return []
 
 
-def extract_images_from_pptx(pptx_path: str, temp_manager: TempFileManager) -> List[str]:
+def extract_images_from_pptx(
+    pptx_path: str, temp_manager: TempFileManager
+) -> List[str]:
     """
     从 PPTX 文件中提取所有嵌入的图片。
     返回提取的图片路径列表。
@@ -329,13 +366,16 @@ def extract_images_from_pptx(pptx_path: str, temp_manager: TempFileManager) -> L
         pptx_dir = tempfile.mkdtemp(prefix="pptx_extract_")
 
         # PPTX 实际上是一个ZIP文件
-        with zipfile.ZipFile(pptx_path, 'r') as zip_ref:
+        with zipfile.ZipFile(pptx_path, "r") as zip_ref:
             zip_ref.extractall(pptx_dir)
             media_dir = os.path.join(pptx_dir, "ppt", "media")
 
             if os.path.exists(media_dir):
                 for filename in os.listdir(media_dir):
-                    if any(filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']):
+                    if any(
+                        filename.lower().endswith(ext)
+                        for ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff"]
+                    ):
                         src_path = os.path.join(media_dir, filename)
                         # 复制到临时目录
                         temp_path = temp_manager.get_temp_path(suffix=f"_{filename}")
@@ -351,47 +391,103 @@ def extract_images_from_pptx(pptx_path: str, temp_manager: TempFileManager) -> L
         return []
 
 
-def extract_images_from_xmind(xmind_path: str, temp_manager: TempFileManager) -> List[str]:
+def extract_images_from_xmind(
+    xmind_path: str, temp_manager: TempFileManager
+) -> List[str]:
     """
-    从 XMind 文件中提取所有嵌入的图片。
+    从 XMind 文件中提取嵌入的图片。
+    根据 content.json 中的节点信息，精确提取对应位置的图片。
     返回提取的图片路径列表。
     """
     try:
         import zipfile
+        import json
+        import re
         import os
+        import tempfile
 
         image_paths = []
-        xmind_dir = tempfile.mkdtemp(prefix="xmind_extract_")
+        temp_dir = tempfile.mkdtemp(prefix="xmind_images_")
 
         try:
-            # XMind 实际上是一个ZIP文件
-            with zipfile.ZipFile(xmind_path, 'r') as zip_ref:
-                zip_ref.extractall(xmind_dir)
+            with zipfile.ZipFile(xmind_path, "r") as zip_ref:
+                zip_ref.extractall(temp_dir)
 
-                # 查找媒体文件目录（可能在不同的位置）
-                media_dirs = []
-                for root, dirs, files in os.walk(xmind_dir):
-                    # XMind的媒体文件可能在OOML、content或media目录中
-                    if any(keyword in root.lower() for keyword in ['media', 'ooml', 'images']):
-                        media_dirs.append(root)
+                try:
+                    content_json_path = os.path.join(temp_dir, "content.json")
+                    if os.path.exists(content_json_path):
+                        with open(content_json_path, "r", encoding="utf-8") as f:
+                            content_data = json.load(f)
 
-                # 如果没有找到特定目录，查找所有目录
-                if not media_dirs:
-                    media_dirs = [xmind_dir]
+                        image_resources = set()
 
-                for media_dir in media_dirs:
-                    if os.path.exists(media_dir):
-                        for filename in os.listdir(media_dir):
-                            if any(filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.svg']):
-                                src_path = os.path.join(media_dir, filename)
-                                # 复制到临时目录
-                                temp_path = temp_manager.get_temp_path(suffix=f"_{filename}")
+                        def collect_images(topic_data):
+                            if isinstance(topic_data, dict):
+                                if "image" in topic_data and isinstance(
+                                    topic_data["image"], dict
+                                ):
+                                    image_src = topic_data["image"].get("src", "")
+                                    if image_src and "resources/" in image_src:
+                                        resource_path = image_src.replace(
+                                            "xap:resources/", ""
+                                        )
+                                        image_resources.add(resource_path)
+
+                                if "children" in topic_data and isinstance(
+                                    topic_data["children"], dict
+                                ):
+                                    if "attached" in topic_data["children"]:
+                                        for sub_topic in topic_data["children"][
+                                            "attached"
+                                        ]:
+                                            collect_images(sub_topic)
+
+                        if isinstance(content_data, list):
+                            for sheet in content_data:
+                                if "rootTopic" in sheet:
+                                    collect_images(sheet["rootTopic"])
+
+                        for resource_path in image_resources:
+                            full_path = os.path.join(
+                                temp_dir, "resources", os.path.basename(resource_path)
+                            )
+                            if os.path.exists(full_path):
+                                filename = os.path.basename(resource_path)
+                                temp_path = temp_manager.get_temp_path(
+                                    suffix=f"_{filename}"
+                                )
+                                shutil.copy2(full_path, temp_path)
+                                image_paths.append(temp_path)
+                    else:
+                        print("警告：content.json 未找到，使用传统方法提取所有图片")
+
+                except Exception as e:
+                    print(f"解析 content.json 时出错: {e}")
+                    print("回退到传统方法...")
+
+                    for root, dirs, files in os.walk(temp_dir):
+                        for filename in files:
+                            if any(
+                                filename.lower().endswith(ext)
+                                for ext in [
+                                    ".png",
+                                    ".jpg",
+                                    ".jpeg",
+                                    ".gif",
+                                    ".bmp",
+                                    ".tiff",
+                                    ".svg",
+                                ]
+                            ):
+                                src_path = os.path.join(root, filename)
+                                temp_path = temp_manager.get_temp_path(
+                                    suffix=f"_{filename}"
+                                )
                                 shutil.copy2(src_path, temp_path)
                                 image_paths.append(temp_path)
 
         finally:
-            # 清理临时目录
-            shutil.rmtree(xmind_dir, ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         return image_paths
 
@@ -400,26 +496,30 @@ def extract_images_from_xmind(xmind_path: str, temp_manager: TempFileManager) ->
         return []
 
 
-def extract_images_from_document(file_path: str, temp_manager: TempFileManager) -> List[str]:
+def extract_images_from_document(
+    file_path: str, temp_manager: TempFileManager
+) -> List[str]:
     """
     从任何支持的文档中提取图片。
     """
     _, extension = os.path.splitext(file_path.lower())
 
-    if extension == '.docx':
+    if extension == ".docx":
         return extract_images_from_docx(file_path, temp_manager)
-    elif extension == '.pdf':
+    elif extension == ".pdf":
         return extract_images_from_pdf(file_path, temp_manager)
-    elif extension == '.pptx':
+    elif extension == ".pptx":
         return extract_images_from_pptx(file_path, temp_manager)
-    elif extension == '.xmind':
+    elif extension == ".xmind":
         return extract_images_from_xmind(file_path, temp_manager)
     else:
         return []
 
 
 # --- 文档转Markdown功能 ---
-def convert_docx_to_markdown_with_placeholders(docx_path: str, image_paths: List[str], temp_manager: TempFileManager) -> str:
+def convert_docx_to_markdown_with_placeholders(
+    docx_path: str, image_paths: List[str], temp_manager: TempFileManager
+) -> str:
     """
     将DOCX转换为带占位符的Markdown。
     通过XML解析检测图片在文档中的精确位置并插入占位符。
@@ -436,27 +536,27 @@ def convert_docx_to_markdown_with_placeholders(docx_path: str, image_paths: List
 
         # 通过XML解析来精确检测图片位置
         docx_zip = zipfile.ZipFile(docx_path)
-        document_xml = docx_zip.read('word/document.xml')
+        document_xml = docx_zip.read("word/document.xml")
         root = ET.fromstring(document_xml)
 
         # 定义命名空间
         ns = {
-            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-            'wp': 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
-            'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
-            'pic': 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+            "pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
         }
 
         # 查找所有图片及其位置
         image_positions = []
-        for idx, para in enumerate(root.findall('.//w:p', ns)):
+        for idx, para in enumerate(root.findall(".//w:p", ns)):
             # 检查此段落是否包含图片 - 使用多种方式检测
             # 方式1: 检查wp:docPr (drawing properties)
-            has_image1 = para.find('.//wp:docPr', ns) is not None
+            has_image1 = para.find(".//wp:docPr", ns) is not None
             # 方式2: 检查a:blip (bitmap image)
-            has_image2 = para.find('.//a:blip', ns) is not None
+            has_image2 = para.find(".//a:blip", ns) is not None
             # 方式3: 检查pic:pic (picture)
-            has_image3 = para.find('.//pic:pic', ns) is not None
+            has_image3 = para.find(".//pic:pic", ns) is not None
 
             has_image = has_image1 or has_image2 or has_image3
 
@@ -469,8 +569,8 @@ def convert_docx_to_markdown_with_placeholders(docx_path: str, image_paths: List
         for para_idx, para in enumerate(doc.paragraphs):
             text = para.text.strip()
             if text:
-                if para.style.name.startswith('Heading'):
-                    level = para.style.name.replace('Heading ', '')
+                if para.style.name.startswith("Heading"):
+                    level = para.style.name.replace("Heading ", "")
                     markdown_lines.append(f"{'#' * int(level)} {text}\n")
                 else:
                     markdown_lines.append(text + "\n")
@@ -491,7 +591,9 @@ def convert_docx_to_markdown_with_placeholders(docx_path: str, image_paths: List
         return f"转换DOCX时出错: {e}"
 
 
-def convert_pdf_to_markdown_with_placeholders(pdf_path: str, image_paths: List[str]) -> str:
+def convert_pdf_to_markdown_with_placeholders(
+    pdf_path: str, image_paths: List[str]
+) -> str:
     """
     将PDF转换为带占位符的Markdown。
     通过页面图片检测功能检测页面中的图片位置并插入占位符。
@@ -516,13 +618,15 @@ def convert_pdf_to_markdown_with_placeholders(pdf_path: str, image_paths: List[s
 
                     # 检测页面中的图片数量
                     image_count = 0
-                    if hasattr(page, 'images') and page.images:
+                    if hasattr(page, "images") and page.images:
                         image_count = len(page.images)
 
                     page_image_counts.append(image_count)
 
                 # 生成Markdown，按检测到的图片位置插入
-                for page_num, (page_text, image_count) in enumerate(zip(page_texts, page_image_counts), 1):
+                for page_num, (page_text, image_count) in enumerate(
+                    zip(page_texts, page_image_counts), 1
+                ):
                     markdown_lines.append(f"--- 第 {page_num} 页 ---\n")
                     if page_text:
                         markdown_lines.append(page_text)
@@ -531,12 +635,16 @@ def convert_pdf_to_markdown_with_placeholders(pdf_path: str, image_paths: List[s
                     if image_count > 0 and image_idx < len(image_paths):
                         for _ in range(image_count):
                             if image_idx < len(image_paths):
-                                markdown_lines.append(f"\n![placeholder]({image_paths[image_idx]})\n")
+                                markdown_lines.append(
+                                    f"\n![placeholder]({image_paths[image_idx]})\n"
+                                )
                                 image_idx += 1
 
                 # 如果还有剩余图片，追加到最后一页
                 while image_idx < len(image_paths):
-                    markdown_lines.append(f"\n![placeholder]({image_paths[image_idx]})\n")
+                    markdown_lines.append(
+                        f"\n![placeholder]({image_paths[image_idx]})\n"
+                    )
                     image_idx += 1
 
         return "\n\n".join(markdown_lines)
@@ -545,7 +653,9 @@ def convert_pdf_to_markdown_with_placeholders(pdf_path: str, image_paths: List[s
         return f"转换PDF时出错: {e}"
 
 
-def convert_pptx_to_markdown_with_placeholders(pptx_path: str, image_paths: List[str], temp_manager: TempFileManager) -> str:
+def convert_pptx_to_markdown_with_placeholders(
+    pptx_path: str, image_paths: List[str], temp_manager: TempFileManager
+) -> str:
     """
     将PPTX转换为带占位符的Markdown。
     按幻灯片提取文本，根据幻灯片中的图片形状插入占位符。
@@ -597,140 +707,82 @@ def convert_pptx_to_markdown_with_placeholders(pptx_path: str, image_paths: List
         return f"转换PPTX时出错: {e}"
 
 
-def convert_xmind_to_markdown_with_placeholders(xmind_path: str, image_paths: List[str], temp_manager: TempFileManager) -> str:
+def convert_xmind_to_markdown_with_placeholders(
+    xmind_path: str, image_paths: List[str], temp_manager: TempFileManager
+) -> str:
     """
     将XMind转换为带占位符的Markdown。
-    使用xmindparser库将XMind文件转换为Python字典，然后格式化为Markdown。
+    直接使用 read_xmind_content 返回的内容，保留占位符在正确位置。
     """
     try:
-        from xmindparser import xmind_to_dict
+        # 直接调用 read_xmind_content 获取已经包含占位符的内容
+        markdown_text = read_xmind_content(xmind_path)
 
-        # 使用xmindparser解析XMind文件
-        xmind_data = xmind_to_dict(xmind_path)
+        # 只需要将 [[IMAGE_PLACEHOLDER_hash]] 格式转换为 ![placeholder](path) 格式
+        import re
 
-        markdown_lines = []
+        placeholder_pattern = r"\[\[IMAGE_PLACEHOLDER_([a-fA-F0-9]+)\]\]"
+
+        # 按顺序替换每个占位符
         image_idx = 0
 
-        def extract_topic_recursive(topic_data, level=0):
-            """递归提取主题结构并插入占位符"""
-            lines = []
+        def replace_placeholder(match):
+            nonlocal image_idx
+            placeholder_hash = match.group(1)
 
-            if isinstance(topic_data, dict):
-                # 生成标题（基于层级）
-                if level == 0:
-                    # 根主题用一级标题
-                    header_prefix = "#"
-                elif level == 1:
-                    # 二级主题
-                    header_prefix = "##"
-                else:
-                    # 其他层级用项目符号
-                    header_prefix = None
+            if image_idx < len(image_paths):
+                # 替换为标准格式，保持位置不变
+                result = f"![placeholder]({image_paths[image_idx]})"
+                image_idx += 1
+                return result
+            else:
+                # 没有对应图片，保留原占位符
+                return f"[[IMAGE_PLACEHOLDER_{placeholder_hash}]]"
 
-                # 提取主题标题
-                if 'title' in topic_data:
-                    title = topic_data['title']
-                    if title and title.strip():
-                        if header_prefix:
-                            lines.append(f"{header_prefix} {title.strip()}\n")
-                        else:
-                            lines.append(f"{'  ' * (level - 1)}- {title.strip()}\n")
+        # 执行替换（保持占位符在原位置）
+        result = re.sub(placeholder_pattern, replace_placeholder, markdown_text)
 
-                # 处理注释
-                if 'note' in topic_data and topic_data['note']:
-                    note = topic_data['note']
-                    if note.strip():
-                        lines.append(f"{'  ' * level}> {note.strip()}\n")
+        return result
 
-                # 处理标签
-                if 'labels' in topic_data and topic_data['labels']:
-                    labels = topic_data['labels']
-                    if labels:
-                        lines.append(f"{'  ' * level}标签: {', '.join(labels)}\n")
-
-                # 处理链接
-                if 'link' in topic_data and topic_data['link']:
-                    link = topic_data['link']
-                    if link.strip():
-                        lines.append(f"{'  ' * level}链接: {link.strip()}\n")
-
-                # 检查是否有图片标记（通过markers或其他属性判断）
-                has_image_indicator = False
-                if 'makers' in topic_data and topic_data['makers']:
-                    # 如果有特殊的标记，可以作为图片占位符的指示器
-                    markers = topic_data['makers']
-                    if any('image' in marker.lower() or 'picture' in marker.lower() for marker in markers):
-                        has_image_indicator = True
-
-                # 在主题内容后插入占位符（如果需要）
-                if has_image_indicator and image_idx < len(image_paths):
-                    lines.append(f"\n![placeholder]({image_paths[image_idx]})\n")
-                    image_idx += 1
-
-                # 递归处理子主题
-                if 'topics' in topic_data and topic_data['topics']:
-                    for sub_topic in topic_data['topics']:
-                        sub_lines = extract_topic_recursive(sub_topic, level + 1)
-                        lines.extend(sub_lines)
-
-            return lines
-
-        # 遍历所有工作表
-        if isinstance(xmind_data, list):
-            for sheet_idx, sheet in enumerate(xmind_data):
-                if 'topic' in sheet:
-                    # 添加工作表标题
-                    if 'title' in sheet:
-                        markdown_lines.append(f"\n# {sheet['title']}\n")
-                    else:
-                        markdown_lines.append(f"\n# 工作表 {sheet_idx + 1}\n")
-
-                    # 提取主题内容
-                    topic_lines = extract_topic_recursive(sheet['topic'], 0)
-                    markdown_lines.extend(topic_lines)
-        elif isinstance(xmind_data, dict) and 'topic' in xmind_data:
-            topic_lines = extract_topic_recursive(xmind_data['topic'], 0)
-            markdown_lines.extend(topic_lines)
-
-        # 如果还有剩余图片，追加到末尾
-        while image_idx < len(image_paths):
-            markdown_lines.append(f"\n![placeholder]({image_paths[image_idx]})\n")
-            image_idx += 1
-
-        return "".join(markdown_lines)
-
-    except ImportError:
-        return "错误：需要安装 xmindparser 库来读取XMind文件: pip install xmindparser"
     except Exception as e:
         return f"转换XMind时出错: {e}"
 
 
-def convert_to_markdown_with_placeholders(file_path: str, image_paths: List[str], temp_manager: TempFileManager) -> str:
+def convert_to_markdown_with_placeholders(
+    file_path: str, image_paths: List[str], temp_manager: TempFileManager
+) -> str:
     """
     将文档转换为带占位符的Markdown。
     """
     _, extension = os.path.splitext(file_path.lower())
 
-    if extension == '.docx':
-        return convert_docx_to_markdown_with_placeholders(file_path, image_paths, temp_manager)
-    elif extension == '.pdf':
+    if extension == ".docx":
+        return convert_docx_to_markdown_with_placeholders(
+            file_path, image_paths, temp_manager
+        )
+    elif extension == ".pdf":
         return convert_pdf_to_markdown_with_placeholders(file_path, image_paths)
-    elif extension == '.pptx':
-        return convert_pptx_to_markdown_with_placeholders(file_path, image_paths, temp_manager)
-    elif extension == '.xmind':
-        return convert_xmind_to_markdown_with_placeholders(file_path, image_paths, temp_manager)
+    elif extension == ".pptx":
+        return convert_pptx_to_markdown_with_placeholders(
+            file_path, image_paths, temp_manager
+        )
+    elif extension == ".xmind":
+        return convert_xmind_to_markdown_with_placeholders(
+            file_path, image_paths, temp_manager
+        )
     else:
         # 对于其他类型，使用原始文本（暂时不支持图片占位符）
         return get_content_from_file(file_path)
 
+
 # 这是分发字典，它将文件扩展名映射到正确的读取函数。
 FILE_READERS = {
-    '.txt': read_txt_content,
-    '.docx': read_docx_content,
-    '.xlsx': read_xlsx_content,
-    '.pptx': read_pptx_content,
-    '.pdf': read_pdf_content,
-    '.xmind': read_xmind_content,
+    ".txt": read_txt_content,
+    ".docx": read_docx_content,
+    ".xlsx": read_xlsx_content,
+    ".pptx": read_pptx_content,
+    ".pdf": read_pdf_content,
+    ".xmind": read_xmind_content,
     # 在这里添加新的读取函数，例如: '.csv': read_csv_content
 }
 
@@ -742,7 +794,7 @@ def encode_image_to_base64(image_path: str) -> str:
     """
     try:
         with open(image_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
             return encoded_string
     except Exception as e:
         print(f"编码图片时出错 {image_path}: {e}")
@@ -757,14 +809,16 @@ def analyze_images_with_qwen_vl(image_paths: List[str]) -> Dict[str, str]:
     """
     try:
         # 检查API配置
-        if QWEN_VL_CONFIG["api_key"] == "YOUR_API_KEY_HERE" or not QWEN_VL_CONFIG["api_key"]:
+        if (
+            QWEN_VL_CONFIG["api_key"] == "YOUR_API_KEY_HERE"
+            or not QWEN_VL_CONFIG["api_key"]
+        ):
             print("警告：请先配置QWEN_VL_CONFIG中的API密钥")
             return {}
 
         # 初始化OpenAI客户端（使用通义千问的base_url）
         client = OpenAI(
-            api_key=QWEN_VL_CONFIG["api_key"],
-            base_url=QWEN_VL_CONFIG["base_url"]
+            api_key=QWEN_VL_CONFIG["api_key"], base_url=QWEN_VL_CONFIG["base_url"]
         )
 
         image_descriptions = {}
@@ -773,7 +827,9 @@ def analyze_images_with_qwen_vl(image_paths: List[str]) -> Dict[str, str]:
 
         # 为每张图片单独调用LLM，确保准确性
         for idx, img_path in enumerate(image_paths, 1):
-            print(f" [LLM] 正在分析图片 {idx}/{len(image_paths)}: {os.path.basename(img_path)}")
+            print(
+                f" [LLM] 正在分析图片 {idx}/{len(image_paths)}: {os.path.basename(img_path)}"
+            )
 
             try:
                 # 编码图片
@@ -787,26 +843,19 @@ def analyze_images_with_qwen_vl(image_paths: List[str]) -> Dict[str, str]:
                 content = [
                     {
                         "type": "text",
-                        "text": "请详细描述这张图片的内容，包括文字、图表、布局等所有可见信息。请用中文回答。"
+                        "text": "请详细描述这张图片的内容，包括文字、图表、布局等所有可见信息。请用中文回答。",
                     },
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_img}"
-                        }
-                    }
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},
+                    },
                 ]
 
                 # 调用qwen-vl模型
                 response = client.chat.completions.create(
                     model=QWEN_VL_CONFIG["model"],
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": content
-                        }
-                    ],
-                    max_tokens=1500
+                    messages=[{"role": "user", "content": content}],
+                    max_tokens=1500,
                 )
 
                 # 获取响应
@@ -822,7 +871,9 @@ def analyze_images_with_qwen_vl(image_paths: List[str]) -> Dict[str, str]:
                 print(f" [LLM] 分析失败: {str(e)[:50]}...")
                 image_descriptions[img_path] = error_msg
 
-        print(f"图片分析完成！成功分析 {len([v for v in image_descriptions.values() if not v.startswith('[')])} / {len(image_paths)} 张图片")
+        print(
+            f"图片分析完成！成功分析 {len([v for v in image_descriptions.values() if not v.startswith('[')])} / {len(image_paths)} 张图片"
+        )
         return image_descriptions
 
     except Exception as e:
@@ -837,7 +888,7 @@ def replace_placeholders(markdown_text: str, image_descriptions: Dict[str, str])
     """
     try:
         # 使用正则表达式匹配 ![placeholder](image_path) 格式
-        placeholder_pattern = r'!\[placeholder\]\(([^)]+)\)'
+        placeholder_pattern = r"!\[placeholder\]\(([^)]+)\)"
 
         def replace_match(match):
             image_path = match.group(1)
@@ -857,6 +908,7 @@ def replace_placeholders(markdown_text: str, image_descriptions: Dict[str, str])
         print(f"替换占位符时出错: {e}")
         return markdown_text
 
+
 def get_content_from_file(file_path: str) -> str:
     """
     从文件中获取内容的通用函数。
@@ -864,19 +916,20 @@ def get_content_from_file(file_path: str) -> str:
     """
     if not os.path.exists(file_path):
         return f"错误：链接的文件 '{file_path}' 不存在"
-    
+
     # 获取文件的扩展名
     _, extension = os.path.splitext(file_path)
-    
+
     # 在我们的字典中查找对应的读取函数
     reader_func = FILE_READERS.get(extension.lower())
-    
+
     if reader_func:
         # 如果找到了读取函数，就调用它
         return reader_func(file_path)
     else:
         # 否则，返回不支持的类型错误
         return f"错误：文件 '{file_path}' 的类型 ({extension}) 不受支持"
+
 
 def format_as_markdown(content: str, file_extension: str) -> str:
     """
@@ -886,15 +939,17 @@ def format_as_markdown(content: str, file_extension: str) -> str:
     :return: 格式化后的 Markdown 字符串。
     """
     # 移除扩展名前的点，使其成为一个更干净的语言标识符
-    lang_identifier = file_extension.lstrip('.')
-    
+    lang_identifier = file_extension.lstrip(".")
+
     # 对于已知不支持的标识符或空标识符，使用 'text' 作为默认
-    if not lang_identifier or lang_identifier in ['docx']:
-        lang_identifier = 'text'
-        
+    if not lang_identifier or lang_identifier in ["docx"]:
+        lang_identifier = "text"
+
     return f"```{lang_identifier}\n{content}\n```"
 
+
 # --- 主 Excel 处理逻辑 ---
+
 
 def process_excel_in_place(excel_path: str):
     """
@@ -917,8 +972,12 @@ def process_excel_in_place(excel_path: str):
     excel_base_dir = os.path.dirname(os.path.abspath(excel_path))
     print(f"将基于此目录解析相对路径: '{excel_base_dir}'")
 
-    all_links = [{'cell': cell, 'target': cell.hyperlink.target}
-                 for row in sheet.iter_rows() for cell in row if cell.hyperlink]
+    all_links = [
+        {"cell": cell, "target": cell.hyperlink.target}
+        for row in sheet.iter_rows()
+        for cell in row
+        if cell.hyperlink
+    ]
 
     if not all_links:
         print("在此文件中未找到任何超链接。未做任何更改。")
@@ -926,11 +985,13 @@ def process_excel_in_place(excel_path: str):
 
     print(f"找到了 {len(all_links)} 个超链接。")
 
-    first_link_col_idx = all_links[0]['cell'].column
+    first_link_col_idx = all_links[0]["cell"].column
     content_col_idx = first_link_col_idx + 1
 
-    print(f"检测到链接列为 {get_column_letter(first_link_col_idx)} 列。 "
-          f"将在 {get_column_letter(content_col_idx)} 列插入新内容。")
+    print(
+        f"检测到链接列为 {get_column_letter(first_link_col_idx)} 列。 "
+        f"将在 {get_column_letter(content_col_idx)} 列插入新内容。"
+    )
 
     sheet.insert_cols(content_col_idx)
 
@@ -941,9 +1002,9 @@ def process_excel_in_place(excel_path: str):
     # 使用临时文件管理器来管理提取的图片
     with TempFileManager() as temp_manager:
         for link_info in all_links:
-            link_cell = link_info['cell']
+            link_cell = link_info["cell"]
             # 这是从Excel中读取的原始路径，可能是相对的
-            relative_or_absolute_path = link_info['target']
+            relative_or_absolute_path = link_info["target"]
 
             # 解析路径，将相对路径转换为绝对路径
             if os.path.isabs(relative_or_absolute_path):
@@ -953,7 +1014,9 @@ def process_excel_in_place(excel_path: str):
                 # 如果是相对路径，则与Excel文件所在目录进行拼接
                 full_path = os.path.join(excel_base_dir, relative_or_absolute_path)
 
-            print(f"  - 正在处理 {link_cell.coordinate}: '{relative_or_absolute_path}' -> 解析为 '{full_path}'")
+            print(
+                f"  - 正在处理 {link_cell.coordinate}: '{relative_or_absolute_path}' -> 解析为 '{full_path}'"
+            )
 
             try:
                 # 步骤1: 从文档中提取图片
@@ -1006,17 +1069,20 @@ def process_excel_in_place(excel_path: str):
         workbook.save(excel_path)
         print("处理完成！原始文件已更新。")
     except PermissionError:
-        print(f"\n错误：无法保存文件。请确保 '{excel_path}' 没有被其他程序（如Excel）打开。")
+        print(
+            f"\n错误：无法保存文件。请确保 '{excel_path}' 没有被其他程序（如Excel）打开。"
+        )
     except Exception as e:
         print(f"\n保存文件 '{excel_path}' 时发生未知错误: {e}")
+
 
 # --- 脚本主入口 ---
 if __name__ == "__main__":
     # --- 警告 ---
     # 此脚本将直接修改您的原始文件。
     # 强烈建议在运行前对您的 Excel 文件进行备份。
-    
+
     # --- 请在这里提供您的 Excel 文件的完整路径 ---
     excel_file_path = "C:\\Users\\Admin\\Desktop\\text\\任务管理.xlsx"
-    
+
     process_excel_in_place(excel_file_path)
