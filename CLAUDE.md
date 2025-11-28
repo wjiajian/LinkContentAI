@@ -80,7 +80,7 @@ FILE_READERS = {
 - Detect image shapes (shape_type == 13) per slide
 
 **XMind Strategy**:
-- Parse with xmindparser to get structured data
+- Direct ZIP file parsing of content.json and manifest.json
 - Check markers for image indicators
 - Uses ZIP file extraction for embedded images
 
@@ -184,11 +184,11 @@ More content...
 - `openpyxl>=3.1.0` - Excel manipulation
 - `python-docx>=0.8.11` - Word documents
 - `python-pptx>=0.6.21` - PowerPoint presentations
-- `xmindparser>=1.0.9` - XMind mind maps
 - `pdfplumber>=0.9.0` - PDF text extraction
 - `pdf2image>=1.16.0` - PDF to image conversion
 - `openai>=1.0.0` - LLM API client
 - `Pillow>=10.0.0` - Image processing
+- `poppler-utils` - PDF image extraction (system dependency)
 
 ### System Dependencies
 - **Poppler**: Required for pdf2image (PDF image extraction)
@@ -216,12 +216,14 @@ More content...
 
 ### 5. XMind Format Support (ENHANCED)
 - **Previous**: Raw ZIP/XML parsing with limited compatibility
-- **Current**: Using `xmindparser` library for robust parsing
+- **Current**: Direct ZIP file parsing of content.json and manifest.json for robust parsing
 - **Benefits**:
   - Supports both legacy and XMind Zen formats
   - Better handling of hierarchical structure
   - Extracts metadata (notes, labels, links, markers)
   - More reliable image detection and positioning
+  - No external library dependency (xmindparser removed)
+  - Precise node-to-image mapping through direct JSON parsing
 
 ### 6. Removed Fallback Mechanisms (SIMPLIFIED) ✓
 - **Change**: Removed all fallback strategies for image position detection

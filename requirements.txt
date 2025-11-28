@@ -5,9 +5,6 @@ python-docx>=0.8.11
 # PowerPoint文档处理
 python-pptx>=0.6.21
 
-# XMind文档处理
-xmindparser>=1.0.9
-
 # PDF文档处理
 pdfplumber>=0.9.0
 
@@ -20,6 +17,4 @@ openai>=1.0.0
 # 图像处理
 Pillow>=10.0.0
 
-# 可选依赖（根据需要安装）
-# pytesseract>=0.3.10  # OCR功能（如需要）
-# poppler-utils        # 用于pdf2image（需要单独安装）
+poppler-utils        # 用于pdf2image（需要单独安装）
