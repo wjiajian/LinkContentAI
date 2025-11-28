@@ -11,7 +11,7 @@
 
 ### 🎯 主要功能
 
-- 📄 **多格式支持**: PDF、DOCX、TXT、XLSX
+- 📄 **多格式支持**: PDF、DOCX、TXT、XLSX、PPTX、XMind
 - 🖼️ **图片分析**: 智能提取并分析文档中的图片
 - 🤖 **AI增强**: 使用qwen-vl模型生成图片详细描述
 - 📝 **Markdown输出**: 优雅的格式化文档内容
@@ -19,6 +19,8 @@
 - 🎨 **格式优化**: 图片描述带长横线分隔符
 - 📊 **智能定位**: 精确检测图片在文档中的位置
 - 🔍 **详细日志**: 实时显示处理进度
+- 🎭 **演示文稿**: 支持PowerPoint幻灯片解析
+- 🧠 **思维导图**: 支持XMind格式智能转换
 
 ### 🔄 处理流程
 
@@ -55,6 +57,8 @@ pip install -r requirements.txt
 **核心依赖**：
 - `openpyxl` - Excel文件处理
 - `python-docx` - Word文档处理
+- `python-pptx` - PowerPoint演示文稿处理
+- `xmindparser` - XMind思维导图解析
 - `pdfplumber` - PDF文本提取
 - `pdf2image` - PDF图片提取
 - `openai` - 多模态LLM调用
@@ -77,7 +81,7 @@ brew install poppler
 sudo apt-get install poppler-utils
 ```
 
-### 4️⃣ 配置API密钥(OpenAI兼容)
+### 4️⃣ 配置API密钥
 
 在 `write_file_excel.py` 顶部修改：
 
@@ -148,6 +152,7 @@ process_excel_in_place("您的Excel文件路径.xlsx")
 .
 
 ================
+
 附件文本内容段落-1
 
 ================
@@ -193,6 +198,64 @@ process_excel_in_place("您的Excel文件路径.xlsx")
 处理完成！原始文件已更新。
 ```
 
+### 🎭 PPTX格式支持示例
+
+### 输出结果
+
+```markdown
+--- 幻灯片 1 ---
+## 产品介绍
+
+产品概述
+这是一款创新的解决方案...
+
+================
+**图片描述**
+图片描述内容
+
+================
+
+--- 幻灯片 2 ---
+## 技术架构
+
+核心组件
+- 前端：React
+- 后端：Python
+- 数据库：PostgreSQL
+
+================
+**图片描述**
+图片描述内容
+
+================
+```
+
+### 🧠 XMind格式支持示例
+
+### 输出结果
+
+```markdown
+# 项目规划
+
+## 阶段一：需求分析
+  - 用户调研
+  - 需求文档
+  - 需求评审
+
+## 阶段二：设计阶段
+  架构设计
+  > 完成技术选型和系统架构设计
+
+  接口设计
+  标签: [高优先级]
+
+## 阶段三：开发阶段
+  - 前端开发
+  - 后端开发
+  - 单元测试
+
+```
+
 ---
 
 ## 🏗️ 架构说明
@@ -200,32 +263,38 @@ process_excel_in_place("您的Excel文件路径.xlsx")
 ### 代码结构
 
 ```
-write_file_excel.py (720行)
-├── 导入和配置 (1-45行)
-├── 临时文件管理 (46-73行)
-├── 文档读取器 (74-330行)
+write_file_excel.py
+├── 导入和配置
+├── 临时文件管理
+├── 文档读取器
 │   ├── read_txt_content() - 读取TXT
 │   ├── read_docx_content() - 读取DOCX
 │   ├── read_xlsx_content() - 读取XLSX
+│   ├── read_pptx_content() - 读取PPTX
+│   ├── read_xmind_content() - 读取XMind
 │   └── read_pdf_content() - 读取PDF
-├── 图片提取功能 (331-430行)
+├── 图片提取功能
 │   ├── extract_images_from_docx()
 │   ├── extract_images_from_pdf()
+│   ├── extract_images_from_pptx()
+│   ├── extract_images_from_xmind()
 │   └── extract_images_from_document()
-├── 文档转换功能 (431-530行)
+├── 文档转换功能
 │   ├── convert_docx_to_markdown_with_placeholders()
 │   ├── convert_pdf_to_markdown_with_placeholders()
+│   ├── convert_pptx_to_markdown_with_placeholders()
+│   ├── convert_xmind_to_markdown_with_placeholders()
 │   └── convert_to_markdown_with_placeholders()
-├── 多模态LLM调用 (531-630行)
+├── 多模态LLM调用
 │   ├── encode_image_to_base64()
 │   └── analyze_images_with_qwen_vl()
-├── 占位符替换 (631-650行)
+├── 占位符替换
 │   └── replace_placeholders()
-├── 文件分发器 (651-660行)
+├── 文件分发器
 │   └── get_content_from_file()
-├── 格式化输出 (661-680行)
+├── 格式化输出
 │   └── format_as_markdown()
-└── 主处理逻辑 (681-720行)
+└── 主处理逻辑
     └── process_excel_in_place()
 ```
 
@@ -255,6 +324,19 @@ write_file_excel.py (720行)
 ```python
 "text": "请详细描述这张图片的内容，包括文字、图表、布局等所有可见信息。请用中文回答。"
 ```
+
+---
+
+## 📋 支持的格式
+
+| 格式 | 扩展名 | 文本提取 | 图片提取 | 图片分析 | 特殊说明 |
+|------|--------|----------|----------|----------|----------|
+| 纯文本 | .txt | ✅ | ❌ | ❌ | 直接读取 |
+| Word文档 | .docx | ✅ | ✅ | ✅ | XML解析定位 |
+| Excel工作表 | .xlsx | ✅ | ❌ | ❌ | 所有工作表 |
+| PowerPoint | .pptx | ✅ | ✅ | ✅ | 幻灯片结构 |
+| XMind思维导图 | .xmind | ✅ | ❌ | ❌ | xmindparser库 |
+| PDF文档 | .pdf | ✅ | ✅ | ✅ | 页面级检测 |
 
 ---
 
@@ -292,6 +374,18 @@ write_file_excel.py (720行)
 **现象**：`PermissionError: [Errno 13] Permission denied`
 **解决**：关闭Excel程序或其他可能打开该文件的程序
 
+#### 7. python-pptx未安装
+**现象**：PPTX文件无法解析
+**解决**：`pip install python-pptx`
+
+#### 8. xmindparser未安装
+**现象**：XMind文件无法解析
+**解决**：`pip install xmindparser`
+
+#### 9. XMind版本兼容性问题
+**现象**：某些XMind文件解析失败
+**解决**：确保使用的是XMind Legacy或XMind Zen格式，程序使用专业的xmindparser库解析
+
 ### 调试模式
 
 如需更详细的调试信息，可以临时启用：
@@ -304,21 +398,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 ---
 
-## 📊 性能说明
-
-### 处理时间估算
-> 主要还是 LLM 调用费时间
-
-| 文档类型 | 图片数量 | 预计时间 | 说明 |
-|----------|----------|----------|------|
-| 纯文本 | 0张 | 5秒 | 最快 |
-| PDF文档 | 1张 | 30秒 | 需LLM分析 |
-| PDF文档 | 3张 | 60秒 | 3次LLM调用 |
-| PDF文档 | 10张 | 180秒 | 10次LLM调用 |
-| DOCX文档 | 5张 | 90秒 | 包含XML解析 |
-
----
-
 ## 📚 文档导航
 
 | 文档 | 用途 |
@@ -327,7 +406,7 @@ logging.basicConfig(level=logging.DEBUG)
 | **CLAUDE.md** | Claude Code开发指南 |
 | **QUICK_START.md** | 5分钟快速上手 |
 | **FAQ_FONT_WARNING.md** | PDF警告问题FAQ |
-| **IMAGE_POSITION_IMPROVEMENT.md** | 图片位置检测技术 |
+| **IMAGE_POSITION_IMPROVEMENT.md** | 图片位置检测 |
 | **INDEX.md** | 完整文档索引 |
 
 ---
