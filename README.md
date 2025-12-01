@@ -71,6 +71,22 @@ pip install -r requirements.txt
 2. 解压到 `C:\poppler\` 目录
 3. 添加 `C:\poppler\bin` 到PATH环境变量
 
+>**个人倾向于在控制台使用命令安装**
+>```powershell
+># 1. 设置允许执行脚本
+>Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+>
+># 2. 下载并安装 Scoop
+>irm get.scoop.sh | iex
+>
+># 3. 添加扩展库 (extras bucket 包含我们要的工具)
+>scoop bucket add extras
+>
+># 4. 安装 Poppler
+>scoop install poppler
+>```
+
+
 **macOS**:
 ```bash
 brew install poppler
@@ -153,7 +169,7 @@ process_excel_in_place("您的Excel文件路径.xlsx")
 
 ================
 
-附件文本内容段落-1
+附件文本内容段落-2
 
 ================
 **图片描述**
