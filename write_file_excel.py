@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+自动提取Excel中链接的文档内容（PDF、DOCX、TXT、XLSX），并使用多模态LLM分析文档中的图片，最终将完整内容插入Excel单元格。
+"""
 import os
 import sys
 import warnings
@@ -21,12 +26,6 @@ from openai import OpenAI
 
 # from xbot import print
 
-# 抑制所有库的警告
-for mod in ["pdfplumber", "pdf2image", "PIL"]:
-    try:
-        warnings.filterwarnings("ignore", module=mod)
-    except:
-        pass
 
 # 配置多模态LLM
 # TODO: 请配置您的qwen-vl API信息

@@ -1,6 +1,8 @@
 # 📊 Excel链接文档增强工具
 
 一个强大的Python工具，用于自动提取Excel中链接的文档内容（PDF、DOCX、TXT、XLSX），并使用多模态LLM分析文档中的图片，最终将完整内容插入Excel单元格。
+> 项目初衷是使用于 RPA 工具当中，为了便于 RPA 调用故将代码写到一个文件中。
+> 如果只需要提取文档内容的功能，不需要从 Excel 附件提取文档，可以参考项目[FileParsering](https://github.com/wjiajian/FileParsering)
 
 [![Python Version](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -99,11 +101,24 @@ sudo apt-get install poppler-utils
 
 ### 4️⃣ 配置API密钥
 
+**方法1：环境变量（推荐）**
+
+设置环境变量 `QWEN_VL`：
+```bash
+# Windows (PowerShell)
+$env:QWEN_VL = "您的通义千问API密钥"
+
+# macOS/Linux
+export QWEN_VL="您的通义千问API密钥"
+```
+
+**方法2：直接修改代码（不推荐）**
+
 在 `write_file_excel.py` 顶部修改：
 
 ```python
 QWEN_VL_CONFIG = {
-    "api_key": "您的通义千问API密钥",  # ⚠️ 必填
+    "api_key": "您的通义千问API密钥",  # ⚠️ 不推荐，建议使用环境变量
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "model": "qwen-vl-plus",  # 或 qwen-vl-max
 }
@@ -121,7 +136,7 @@ QWEN_VL_CONFIG = {
 ### 方法1：修改脚本直接运行
 
 1. 打开 `write_file_excel.py`
-2. 修改第229行的文件路径：
+2. 修改末尾的 `excel_file_path` 变量（第1086行左右）：
 ```python
 excel_file_path = "您的Excel文件路径.xlsx"
 ```
@@ -200,12 +215,12 @@ process_excel_in_place("您的Excel文件路径.xlsx")
     转换为Markdown格式...
     使用多模态LLM分析图片...
     开始分析 3 张图片...
-      📸 正在分析图片 1/3: page_1.png
-        ✅ 分析完成 (描述长度: 245 字符)
-      📸 正在分析图片 2/3: page_2.png
-        ✅ 分析完成 (描述长度: 312 字符)
-      📸 正在分析图片 3/3: page_3.png
-        ✅ 分析完成 (描述长度: 198 字符)
+      [LLM] 正在分析图片 1/3: page_1.png
+        [LLM] 分析完成 (描述长度: 245 字符)
+      [LLM] 正在分析图片 2/3: page_2.png
+        [LLM] 分析完成 (描述长度: 312 字符)
+      [LLM] 正在分析图片 3/3: page_3.png
+        [LLM] 分析完成 (描述长度: 198 字符)
     图片分析完成！成功分析 3 / 3 张图片
     替换占位符...
     完成
@@ -419,10 +434,6 @@ logging.basicConfig(level=logging.DEBUG)
 |------|------|
 | **README.md** | 项目总览（本文档） |
 | **CLAUDE.md** | Claude Code开发指南 |
-| **QUICK_START.md** | 5分钟快速上手 |
-| **FAQ_FONT_WARNING.md** | PDF警告问题FAQ |
-| **IMAGE_POSITION_IMPROVEMENT.md** | 图片位置检测 |
-| **INDEX.md** | 完整文档索引 |
 
 ---
 
@@ -454,8 +465,8 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 ## 📞 支持
 
 如有问题，请：
-1. 查看 [FAQ_FONT_WARNING.md](FAQ_FONT_WARNING.md)
-2. 查看 [INDEX.md](INDEX.md) 获取相关文档
+1. 查看本文档的故障排除部分
+2. 查看 [CLAUDE.md](CLAUDE.md) 获取开发指南
 3. 提交Issue描述问题
 
 ---
@@ -466,4 +477,4 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 **祝您使用愉快！**
 
-[![开始使用](https://img.shields.io/badge/🚀-开始使用-brightgreen)](write_file_excel.py)
+[![开始使用](https://img.shields.io/badge/开始使用-brightgreen)](write_file_excel.py)
